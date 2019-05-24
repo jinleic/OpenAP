@@ -1,17 +1,60 @@
+# -*- coding: utf-8 -*-
 import cv2
 import logging
 import numpy as np
 from scipy.optimize import curve_fit
-from .helper import max_type
+from .helper import max_type, toGrayScale, convertTo
 
 
-__all__ = ["starDetection", "_starFitting", "starFitting"]
+__all__ = ["blobStarDetection", "_starFitting", "starFitting",
+           "starSizeReduction"]
 
 
-def starDetection(img_data, minThres, minRadius, minCirc, minInertia):
+def starSizeReduction(img_data, starMask, erosionMask, ratio=0.5, eroIter=1,
+                      dilIter=3):
     '''
-    starDetection(img_data(2D numpy.ndarray), minThres, minRadius(int),
-                  minCirc(float), minInertia(float))
+    starSizeReduction(img_data(2D or 3D numpy.ndarray), starMask(2D np.uint8
+                      numpy.ndarray), erosionMask(2D np.uint8 numpy.ndarray),
+                      ratio(float), eroIter(int), dilIter(int))
+
+    Reduce star size with morphological transformation. Star mask dilation is
+    also performed if necessary. Output is a linear combination of original
+    image and star-size-reduced image.
+
+    img_data: 2D or 3D numpy.ndarray, input image data.
+    starMask: 2D numpy.uint8 array, input star mask.
+    erosionMask: 2D numpy.uint8 array, erosion and dilation mask.
+    ratio: float, default 0.5. Coefficient for linear combination. Should be
+           less than 1.
+    eroIter: int, default 1. Number of iterations of erosion.
+    dilIter: int, default 3. Number of iterations of star mask dilation.
+    '''
+    # Dilate star mask
+    if dilIter != 0:
+        star_mask = cv2.dilate(starMask, erosionMask, iterations=dilIter)
+    else:
+        star_mask = starMask
+    # Extract stars
+    img_star_only = cv2.bitwise_and(img_data, img_data, mask=star_mask)
+    # Erosion
+    img_star_only_reduced = cv2.erode(img_star_only, erosionMask,
+                                      iterations=eroIter)
+    # Get black in the eroded image
+    mask_to_fill = toGrayScale(img_star_only_reduced)
+    mask_to_fill = convertTo(mask_to_fill, np.uint8)
+    mask_to_fill[mask_to_fill != 0] = 255
+    img_to_fill_1 = cv2.bitwise_and(img_data, img_data, mask=mask_to_fill)
+    mask_to_fill = cv2.bitwise_not(mask_to_fill)
+    img_to_fill_2 = cv2.bitwise_and(img_data, img_data, mask=mask_to_fill)
+    img_part = cv2.addWeighted(img_star_only_reduced, ratio, img_to_fill_1,
+                               1.0 - ratio, 0.0)
+    return cv2.add(img_part, img_to_fill_2)
+
+
+def blobStarDetection(img_data, minThres, minRadius, minCirc, minInertia):
+    '''
+    blobstarDetection(img_data(2D numpy.ndarray), minThres, minRadius(int),
+                      minCirc(float), minInertia(float))
 
 
     Star detection with SimpleBlobDetector in OpenCV. Max threshold is assumed

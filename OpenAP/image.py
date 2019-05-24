@@ -1,6 +1,7 @@
+# -*- coding: utf-8 -*-
 import cv2
 import numpy as np
-from .helper import *
+from .helper import convertTo
 
 
 __all__ = ["Image"]
